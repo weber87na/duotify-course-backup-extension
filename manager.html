@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>課程備份助手</title>
+  <link rel="stylesheet" href="manager.css">
+  <script type="module" src="manager.js"></script>
+</head>
+<body>
+  <main>
+    <header><div><p class="eyebrow">COURSE BACKUP · LOCAL ONLY</p><h1>把課程，留在你的硬碟。</h1><p id="page-title">正在讀取課程…</p></div><span class="badge">Chrome · v0.2</span></header>
+    <div id="notice" class="notice" role="status">請先在課程頁按下擴充功能圖示。</div>
+    <section class="panel">
+      <div class="section-heading"><div><span class="step">01</span><h2>選擇內容</h2></div><button id="rescan" class="quiet">重新掃描</button></div>
+      <p class="hint">可批次讀取多奇課程目錄中的章節；其他網站先開啟影片，再按擴充功能圖示。</p>
+      <div id="lessons" class="lessons"></div>
+      <button id="analyze" class="primary">分析已選內容</button>
+      <div id="analysis-progress" class="hint" aria-live="polite"></div>
+    </section>
+    <section class="panel">
+      <div class="section-heading"><div><span class="step">02</span><h2>確認影片與畫質</h2></div><span id="count" class="muted">尚未分析</span></div>
+      <div id="items" class="items"><p class="empty">分析後，影片和字幕會出現在這裡。</p></div>
+      <p id="duotify-note" class="notice" hidden>多奇課程：下載時會讀取原課程頁播放器使用的 Cookie，在記憶體內取得解密資料。Cookie 與金鑰不保存、不匯出。請保留已登入且可播放的原課程分頁。</p>
+      <div id="permissions" class="permission-box" hidden><p>以下媒體來源需要你的授權：</p><ul id="origins"></ul><button id="grant" class="secondary">允許列出的來源並繼續</button></div>
+    </section>
+    <section class="panel">
+      <div class="section-heading"><div><span class="step">03</span><h2>儲存到電腦</h2></div></div>
+      <div class="toolbar"><button id="folder" class="secondary">選擇儲存資料夾</button><span id="folder-name" class="muted">HLS 影片與字幕存到此處</span></div>
+      <p class="hint">HLS 分段依序寫入硬碟，輸出 .ts 或分段式 .mp4。下載時請保持此分頁開啟、電腦不要休眠。直接影片由 Chrome 下載管理員處理。</p>
+      <div class="toolbar"><button id="download" class="primary" disabled>下載已選影片與字幕</button><button id="cancel" class="quiet" disabled>取消本次下載</button><span id="overall" aria-live="polite"></span></div>
+    </section>
+    <footer>僅使用你目前可存取的媒體；不讀取密碼、不匯出 Cookie、沒有資料上傳。支援 AES-128，DRM、直播及不支援的串流會顯示原因。</footer>
+  </main>
+</body>
+</html>

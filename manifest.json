@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "課程備份助手",
+  "version": "0.2.0",
+  "description": "備份目前可存取的課程影片與字幕，支援直接影片、一般 HLS AES-128 及多奇播放器。",
+  "minimum_chrome_version": "114",
+  "permissions": ["activeTab", "scripting", "storage", "downloads"],
+  "host_permissions": ["https://learn.duotify.com/*"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "action": { "default_title": "掃描此頁的課程影片" },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'" }
+}

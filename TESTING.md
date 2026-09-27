@@ -2,6 +2,28 @@
 
 日期：2026-09-27
 
+## CLI v0.4.0 existing Chrome 模式（2026-09-28）
+
+預設連接正常執行中的 Chrome 144+，由使用者手動啟用 auto-connect 並接受 Chrome 的連線授權；不依賴 Chrome 擴充功能。已確認本機 Chrome 153 符合版本需求。既有 HLS、AES、檔案發布與合成 HTTP 測試仍適用。
+
+`node --test tests/*.test.js` 通過；Chrome 實體瀏覽器測試預設略過，需指定 `COURSE_BACKUP_TEST_CHROME` 才執行。新增 14 項既有 Chrome adapter 測試涵蓋同課程限制、URL 範圍內的 Cookie、授權逾時／取消、延遲建立資源的清理；命令整合測試另確認預設使用 existing 並遵守章節選擇。
+
+使用本機 Chrome 153、獨立 headless 臨時 profile 執行實體連線測試，通過：真正建立新分頁、關閉自身分頁並 disconnect 後，原分頁與原瀏覽器仍保留。此測試發現並修正 Chrome 新建 `tab` 的初始 URL 為空字串、先前被 filter 排除而逾時的問題；全程僅使用 `about:blank` 與 `data:` 測試內容，不使用真實登入。未啟用 auto-connect 時，實際 CLI 也已確認會顯示設定方法並以 exit 1 結束。
+
+已完成真實 Chrome 153 auto-connect：使用者啟用原生設定並允許連線，CLI 沿用多奇登入、列出兩章目錄，依選擇下載第 1 章與字幕，exit 0、failed 空陣列，全程不依賴擴充功能。影片 1531 個分段、719,101,128 bytes；VTT 字幕 438,786 bytes。原有同名影片保留，新影片自動加 `(1)`，完成後沒有 `.part` 殘留。
+
+對新完成影片以 PyAV 18.1.0 進行本機唯讀檢查：MPEG-TS、H.264 2560×1440／25 fps，視訊時長 14170.56 秒（3:56:10.56）；AAC 雙聲道 48 kHz，音訊時長 14170.496 秒。在開頭、中段、末段各解碼 5 個視訊影格與 10 個音訊 frame，抽樣成功、未標記 corrupt；檢查期間檔案大小及 mtime 均未改變。隨機 seek 曾有參考影格警告，之後解碼成功；這不是整部逐影格解碼或人工聽看驗證。SHA-256：`9cfdf74b44ccdd880fb13df57588de2f4d0efe117c2eb938d523947a3e1a4f82`。驗證工具與報告放在忽略的 `.cache/`，不是 CLI 執行依賴。
+
+後續將抽樣起點調整至 seek 後第一個 keyframe，再次檢查開頭、中段與末段，影音解碼均成功且沒有解碼警告，檔案 SHA-256 不變。此結果仍屬抽樣檢查。
+
+## CLI v0.3.0／Skill（2026-09-28）
+
+CLI 重用既有 parser／transfer；新增命令解析、章節選擇、來源綁定、Cookie 重新導向隔離、瀏覽器資源清理、原子檔案發布與 Skill 安裝測試。Node 的下載測試使用本機臨時資料夾，成功才發布正式檔名；失敗、取消和並行同名皆有涵蓋。
+
+`node --test tests/*.test.js`：138 項通過、0 項失敗。包含真實 CLI 子程序透過 localhost 下載合成 AES-HLS 與 VTT，逐位元組驗證結果、JSON 與結束碼；错误首段 exit 1 且不產生正式檔或暫存檔。CLI／Skill wrapper 的 `--help`、`--version` 正常，Skill validator 通過，個人技能安裝後確認版本為 0.3.0。
+
+登入瀏覽器的生命週期與課程操作使用 mock；未讀取真實 Cookie，未完成 CLI 真實課程下載或離線播放驗證。這與合成 HTTP／AES 測試分開記錄，不因 CLI 測試通過而宣稱所有課程均可下載。
+
 ## 自動化測試
 
 v0.2：`node --test tests/*.test.js` 共 81 項通過、0 項失敗（2026-09-27）。
@@ -13,7 +35,7 @@ v0.2：`node --test tests/*.test.js` 共 81 項通過、0 項失敗（2026-09-27
 - 來源綁定：驗證掃描頁、目錄章節、原始與最終 API 清單仍屬於預期課程及影片。
 - 工具函式：3 項，包含 Windows 檔名、網址驗證與既有檔案避讓。
 
-JavaScript 語法檢查通過。無外部 npm 套件、無建置步驟。
+JavaScript 語法檢查通過。擴充功能本身無外部 npm 套件、無建置步驟；CLI 的瀏覽器登入依賴另由 package.json 宣告。
 
 ## Chrome 中的本機整合測試
 
@@ -31,10 +53,10 @@ v0.1 已操作並驗證（全為未加密 fixture）：
 
 v0.2 已在 Chrome 重新操作分析、來源授權、選擇記憶體資料夾與批次下載：AES-128 第一章輸出 752 bytes、字幕 60 bytes、未加密第二章 1128 bytes，3 項皆為 closed，0 項錯誤。金鑰來源只請求一次，所有請求均為 localhost。另有合成整合測試驗證網站 Cookie adapter → 不可匯出的 CryptoKey → 解密 → TS 寫入的完整資料流程。
 
-## 真實網站驗證狀態
+## 擴充功能真實網站驗證狀態
 
 已在使用者登入的 Chrome 分頁觀察播放器 DOM、HLS 與字幕入口，以及 Azure TS 分段來源。
 
 使用者已安裝 v0.1，截圖顯示兩個真實 HLS 清單解析成功、字幕儲存成功，但加密影片未通過 TS 檢查。靜態檢查公開播放器後，已在 v0.2 加入網站專用處理。
 
-新版尚未完成真實影片下載與離線播放驗證。使用者已回報重新載入並提供新助手分頁網址；瀏覽器工具的 URL 政策同時拒絕操作 `chrome://extensions` 和 `chrome-extension://`（只允許 HTTP／HTTPS），因此無法代為操作該下載介面。需要使用者在助手頁進行實测；不能把合成測試視為真實課程備份完成。
+v0.2 擴充功能尚未完成真實影片下載與離線播放驗證。使用者已回報重新載入並提供新助手分頁網址；瀏覽器工具的 URL 政策同時拒絕操作 `chrome://extensions` 和 `chrome-extension://`（只允許 HTTP／HTTPS），因此無法代為操作該下載介面。這是獨立擴充功能的歷史驗證狀態；CLI v0.4.0 不需安裝或操作該擴充功能，改用上方記錄的 Chrome 原生連線授權流程。

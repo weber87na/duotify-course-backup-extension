@@ -12,3 +12,6 @@ playwright-report/
 .DS_Store
 Thumbs.db
 desktop.ini
+downloads/
+*.part
+local-config.json

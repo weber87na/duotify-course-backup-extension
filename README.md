@@ -1,10 +1,87 @@
 # 課程備份助手
 
-Chrome Manifest V3 擴充功能，從目前可播放的課程頁找出影片與字幕，再儲存到本機。多奇課程支援從章節目錄批次分析；其他網站可先開啟個別影片再掃描。
+提供 Chrome Manifest V3 擴充功能、Node.js CLI 與 Codex Skill，從目前可播放的課程頁找出影片與字幕，再儲存到本機。多奇課程支援從章節目錄批次分析；其他網站可先開啟個別影片再掃描。
 
-v0.2.0 加入一般 HLS AES-128 與多奇播放器的記憶體解密支援，處理原先「回應不是支援的 MPEG-TS 影片區段」問題。已通過合成資料測試；**新版尚未完成真實課程下載與離線播放驗證。** 請先選一個章節，確認下載檔能播放、有聲音、時長完整，再下載其餘內容。診斷記錄見 `DIAGNOSIS.md`。
+v0.2.0 加入一般 HLS AES-128 與多奇播放器的記憶體解密支援，處理原先「回應不是支援的 MPEG-TS 影片區段」問題。擴充功能的驗證狀態與診斷見 `DIAGNOSIS.md`、`TESTING.md`。
 
-## 安裝到 Chrome
+CLI v0.4.0 預設連接你已登入的正常 Chrome，不需要安裝擴充功能。Chrome 擴充功能 v0.2.0 仍可獨立使用；兩者共用 HLS 解析、解密與資料驗證邏輯。
+
+已於 2026-09-28 以 Chrome 153 的既有登入完成真實課程第一章及字幕下載：1531 個分段、719,101,128 bytes，影片為 2560×1440 H.264／AAC、約 3 小時 56 分；開頭、中間、結尾的影音抽樣解碼成功。這是 CLI 的實測結果，不代表所有課程或擴充功能流程都已驗證。
+
+## Node.js CLI
+
+需要 Node.js 22.12 以上及 Chrome 144 以上。在專案資料夾安裝依賴：
+
+```powershell
+npm install
+node cli/index.js --help
+```
+
+亦可使用 `pnpm install --frozen-lockfile`，依儲存庫的 `pnpm-lock.yaml` 安裝。
+
+第一次使用預設的 `--browser existing` 模式：
+
+1. 在你平常使用的 Chrome 登入多奇，確認已購買的課程可以播放。
+2. 自行開啟 `chrome://inspect/#remote-debugging`，啟用遠端偵錯。這是 Chrome 內建的 auto-connect 設定，只需設定一次；不需啟動旗標或擴充功能。
+3. 執行下面的 CLI 命令；Chrome 出現本次連線的授權提示時，按「允許」。CLI 會在現有 Chrome 工作階段建立自己的課程分頁，沿用目前的網站登入狀態。
+
+設定頁與 Chrome 授權提示需要由你操作，詳見 [Chrome 官方 auto-connect 設定](https://developer.chrome.com/docs/devtools/agents/use-cases/auto-connect)。CLI 使用 [Puppeteer ConnectOptions 的 `channel`](https://pptr.dev/api/puppeteer.connectoptions) 連接目前執行中的 Chrome；該 API 仍標示為實驗性功能。
+
+下載目前章節到指定資料夾：
+
+```powershell
+node cli/index.js download "https://learn.duotify.com/video/watch?slug=claude-code&sectionId=280" --out "D:\claude"
+```
+
+課程命令預設使用 `--browser existing`，目前只支援 `https://learn.duotify.com`。已在正常 Chrome 登入 Google／多奇時，不必在自動化瀏覽器重做登入。`--wait-login 900` 可調整連線授權與課程等待時間，預設 600 秒。完成或 `Ctrl+C` 取消時，只關閉 CLI 建立的課程分頁並中斷連線；你原有的 Chrome 視窗和其他分頁會保留。
+
+常用指令：
+
+```powershell
+# 只列出目錄（JSON 不包含媒體網址）
+node cli/index.js scan "https://learn.duotify.com/courses/claude-code" --json
+
+# 依目錄編號選取章節
+node cli/index.js download "https://learn.duotify.com/courses/claude-code" --chapters 1,2 --out "D:\claude"
+
+# 下載這門課所有目錄章節，優先使用不超過 1080p 的畫質
+node cli/index.js download "https://learn.duotify.com/courses/claude-code" --all --max-height 1080 --out "D:\claude"
+
+# 直接下載已授權的 HLS／影片網址；此模式不帶登入資訊
+node cli/index.js download --media "https://example.com/video.m3u8" --title "課程影片" --out "D:\videos"
+```
+
+已知道要下載的章節時，直接用 `download`，它也會列出目錄；不必先跑 `scan` 多授權一次連線。`--quality worst` 選較低畫質，`--no-subtitles` 略過字幕，`--json` 將結果輸出到 stdout、進度留在 stderr。結束碼 `0` 表示所選項目成功，`1` 表示失敗，`130` 表示取消。
+
+CLI 每個章節都重新開啟對應播放頁並取得該章節的解密資訊，避免假設整門課共用金鑰。existing 模式只讀取多奇網站所需的 Cookie；Cookie 與解密資訊只供當次 CLI 記憶體使用，不保存、不輸出記錄、不傳給第三方。登入 Cookie 只送往多奇同一 origin，跨來源媒體請求不帶該 Cookie，重導向逐步重新檢查。CLI 不複製 Chrome profile、不讀取儲存的密碼，也不提供匯出 Cookie／金鑰的選項。
+
+若你明確需要獨立瀏覽器，可加 `--browser chrome`、`--browser msedge` 或 `--browser chromium`。這些模式開啟全新、非持久的工作階段，每次需要登入；Google 可能拒絕自動化瀏覽器登入，因此多奇課程優先使用 existing 模式。Chromium 首次使用前需執行 `npx playwright install chromium`。獨立模式的隔離方式見 [Playwright BrowserContext 說明](https://playwright.dev/docs/api/class-browser#browser-new-context)。`--media` 直接媒體模式維持不啟動瀏覽器、不攜帶 Cookie。
+
+CLI 在收到有效資料後才建立隨機 `.part` 暫存檔，全部成功後才以正式檔名發布；既有檔案不覆寫，同名自動加 `(1)`。取消或一般失敗會清理該次暫存檔；強制關閉程序或斷電可能留下 `.part`，不可視為完整影片。輸出資料夾需支援硬連結，例如本機 NTFS、APFS、ext4；FAT／exFAT 或部分網路磁碟不適用，請先下載到本機支援的磁碟。CLI 不提供斷點續傳。
+
+也可執行 `npm link`，之後使用 `course-backup ...` 命令；不需要發布 npm 套件。
+
+## Codex Skill
+
+技能來源在 `skills/course-backup/`。安裝到自己的 Codex：
+
+```powershell
+node scripts/install-skill.mjs
+```
+
+預設目的地為 `$CODEX_HOME/skills/course-backup`；未設定時使用 `~/.codex/skills/course-backup`。技能只保存本機專案路徑，不複製登入資訊。更新同名技能或搬移專案後，可重新執行並加 `--force`；安裝器不覆寫不同名稱的技能。
+
+在後續對話可使用：
+
+```text
+使用 $course-backup，將這門課第 1 章下載到 D:\claude：<課程網址>
+```
+
+Skill 透過 Node.js 呼叫同一套 CLI，預設沿用正常 Chrome 的登入狀態。首次需自行啟用 Chrome auto-connect，連線時接受 Chrome 提示；不需要安裝 Chrome 擴充功能，也不會要求貼密碼或 Cookie。
+
+## 獨立 Chrome 擴充功能（選用）
+
+以下是原有擴充功能的使用方式，使用 CLI／Skill 不需要安裝它。
 
 1. 使用桌面版 Chrome 114 或更新版本。
 2. 在網址列輸入 `chrome://extensions`。
@@ -19,7 +96,7 @@ v0.2.0 加入一般 HLS AES-128 與多奇播放器的記憶體解密支援，處
 
 這是可直接載入的原始碼，不需要執行 npm、建置程式或安裝 ffmpeg。更新程式後，回到擴充功能頁按該項目的重新載入按鈕，並重新開啟備份助手。安裝方式依照 [Chrome 官方未封裝擴充功能說明](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world)。
 
-## 下載課程
+## 擴充功能下載課程
 
 1. 在**安裝此外掛的 Chrome** 登入[課程網站](https://learn.duotify.com/courses/claude-code)，開啟已購買且能播放的影片。Codex 內建瀏覽器的登入狀態不一定與 Chrome 共用，請在 Chrome 確認可以播放。
 2. 在課程影片頁按工具列的「課程備份助手」圖示，開啟管理分頁。
@@ -62,7 +139,7 @@ ffmpeg -i "input.ts" -c copy "output.mp4"
 - 來源網址可能過期。出現 401、403、登入頁或無法取得媒體時，先回到課程頁確認仍能播放，再重新掃描、分析。外掛獲得網域權限不代表伺服器一定允許該次請求。
 - 此外掛不會延長網站的課程存取期限；所有下載仍取決於網站當下提供的媒體與登入狀態。
 
-## 權限與本機資料
+## 擴充功能權限與本機資料
 
 | 權限 | 用途 |
 | --- | --- |

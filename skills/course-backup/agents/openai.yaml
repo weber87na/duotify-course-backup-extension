@@ -1,0 +1,4 @@
+interface:
+  display_name: "課程備份"
+  short_description: "透過 Node.js CLI 保存已購買課程的影片、章節與字幕"
+  default_prompt: "使用 $course-backup 幫我列出已購買課程的章節，並備份選定的影片與字幕。"

@@ -2,6 +2,14 @@
 
 日期：2026-09-27
 
+## CLI v0.4.1 課程首頁章節解析（2026-09-29）
+
+真實登入頁 `/courses/ai-prompt` 的章節連結使用 `href="javascript:void(0);"`，章節資料位於 `handleContentClickRedirect(event, 'ai-prompt', 281)`。掃描器現在只解析這個已觀察到的固定呼叫格式，產生同課程的播放網址；不執行頁面提供的 JavaScript。首頁上的介紹影片不再被當作章節目錄，也不會將沒有目錄的首頁建立成假章節。
+
+`node --test --test-reporter=spec tests/*.test.js`：162 項測試中 161 項通過、0 項失敗、1 項略過（需明確啟用的 Chrome 實體生命週期測試）。新增回歸測試涵蓋 onclick 章節解析、一般連結去重與順序、錯誤格式及跨課程拒絕，以及從首頁依預設／`--all`／`--chapters` 進入所選播放頁的命令流程。CLI 與已安裝的 Skill wrapper 均回報 `0.4.1`。
+
+透過既有 Chrome 的登入狀態，實際從 `/courses/ai-prompt` 自動找到章節 `281`，並開啟對應播放頁；不需使用者另外提供播放網址。後續播放器就緒檢查先後在 30 秒及 90 秒逾時，最後狀態為 `readyState=0`、`networkState=2`、沒有 MediaError、時長約 5380.44 秒；原因尚未確認。本次已驗證首頁解析與章節導覽，未驗證該課程影片分段下載，也沒有下載整部影片；未因此放寬既有播放授權檢查。
+
 ## CLI v0.4.0 existing Chrome 模式（2026-09-28）
 
 預設連接正常執行中的 Chrome 144+，由使用者手動啟用 auto-connect 並接受 Chrome 的連線授權；不依賴 Chrome 擴充功能。已確認本機 Chrome 153 符合版本需求。既有 HLS、AES、檔案發布與合成 HTTP 測試仍適用。

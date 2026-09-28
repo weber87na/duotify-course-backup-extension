@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { selectLessons, scanSummary, scanWhenReady, playbackFor } from '../cli/course.js';
 import { run } from '../cli/index.js';
 
@@ -17,6 +18,64 @@ test('course selection respects catalog order and defaults to current chapter', 
   assert.throws(() => selectLessons(scan, { chapters: [3] }), /範圍/);
   assert.throws(() => selectLessons({ ...scan, pageUrl: pageUrl.replace('280', '999') }), /指定的章節/);
   assert.deepEqual(selectLessons({ ...scan, pageUrl: 'https://learn.duotify.com/courses/example' }).map(l => l.index), [1]);
+  assert.throws(() => selectLessons({ pageUrl: 'https://learn.duotify.com/courses/example', lessons: [], title: '課程首頁' }), /尚未找到章節/);
+});
+
+test('landing-page preview media cannot finish catalog discovery or become a fake chapter', async () => {
+  const landing = 'https://learn.duotify.com/courses/example';
+  const preview = { pageUrl: landing, title: '課程首頁', lessons: [], media: [{ url: 'https://example.test/preview.mp4', kind: 'file' }] };
+  const page = { isClosed: () => false, url: () => landing, evaluate: async () => preview };
+  await assert.rejects(scanWhenReady(page, landing, { timeoutMs: 1 }), /逾時/);
+  for (const options of [{}, { all: true }, { chapters: [1] }]) assert.throws(() => selectLessons(preview, options), /尚未找到章節/);
+  const playable = { ...preview, pageUrl, media: [{ url: manifest, kind: 'hls' }] };
+  assert.deepEqual(selectLessons(playable).map(item => item.url), [pageUrl]);
+});
+
+test('course URL discovers real onclick chapters and downloads selected watch pages in catalog order', async () => {
+  const landing = 'https://learn.duotify.com/courses/ai-prompt';
+  const lessons = [281, 282].map((sectionId, index) => ({
+    url: `https://learn.duotify.com/video/watch?slug=ai-prompt&sectionId=${sectionId}`, title: `章節 ${index + 1}`,
+  }));
+  const element = (tag, attrs, textContent = '') => ({ tagName: tag.toUpperCase(), textContent, getAttribute: name => attrs[name] ?? null });
+  for (const [flags, expectedIds] of [[[], [281]], [['--all'], [281, 282]], [['--chapters', '2'], [282]]]) {
+    let current = landing, closed = 0;
+    const navigations = [], downloads = [], output = [];
+    const page = {
+      isClosed: () => false, url: () => current,
+      async goto(url) { current = url; navigations.push(url); },
+      async evaluate(fn, ...args) {
+        if (fn.name !== 'scanPage') return true;
+        const elements = current === landing
+          ? lessons.map((lesson, index) => element('a', {
+            href: 'javascript:void(0);', onclick: `handleContentClickRedirect(event, 'ai-prompt', ${281 + index})`,
+          }, lesson.title))
+          : [element('video', { 'data-src': `/api/video/watch?slug=ai-prompt&videoId=synthetic-${new URL(current).searchParams.get('sectionId')}&type=m3u8` }),
+            ...lessons.map(lesson => element('a', { href: lesson.url }, lesson.title))];
+        const context = { URL, location: { href: current }, document: { title: '合成課程首頁', baseURI: current, querySelectorAll: () => elements },
+          performance: { getEntriesByType: () => [] }, args };
+        return JSON.parse(JSON.stringify(await vm.runInNewContext(`(${fn.toString()})(...args)`, context)));
+      },
+    };
+    const code = await run(['download', landing, ...flags, '--json', '--wait-login', '1'], {
+      stdout: { write: text => output.push(text) }, stderr: { write() {} },
+      existing: async () => ({ page, setAuthOrigin() {}, close: async () => { closed++; } }),
+      launch: () => assert.fail('Course discovery must reuse existing Chrome'),
+      download: async ({ media }) => {
+        assert.equal(new URL(media.lessonUrl).pathname, '/video/watch');
+        assert.equal(media.kind, 'hls');
+        const id = Number(new URL(media.lessonUrl).searchParams.get('sectionId'));
+        downloads.push(id);
+        return { path: `/synthetic/${id}.ts`, bytes: 376 };
+      },
+    });
+    assert.equal(code, 0);
+    assert.deepEqual(downloads, expectedIds);
+    assert.deepEqual(navigations, [landing, ...expectedIds.map(id => lessons.find(l => l.url.endsWith(`=${id}`)).url)]);
+    assert.equal(closed, 1);
+    const report = JSON.parse(output.join(''));
+    assert.deepEqual(report.lessons.map(l => l.sectionId), ['281', '282']);
+    assert.deepEqual(report.failed, []);
+  }
 });
 
 test('scan summary exposes lesson labels, never signed media URLs', () => {

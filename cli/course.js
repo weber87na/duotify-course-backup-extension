@@ -17,6 +17,11 @@ export function duotifySlug(raw) {
   return path ? decodeURIComponent(path[1]) : url.searchParams.get('slug');
 }
 
+function isDuotifyLanding(raw) {
+  const url = new URL(raw);
+  return url.origin === 'https://learn.duotify.com' && /^\/courses\/[^/]+\/?$/.test(url.pathname);
+}
+
 function samePage(actual, expected) {
   const a = new URL(actual), b = new URL(expected);
   if (a.origin !== b.origin) return false;
@@ -32,6 +37,9 @@ function samePage(actual, expected) {
 }
 
 export function selectLessons(scan, { all = false, chapters } = {}) {
+  if (isDuotifyLanding(scan.pageUrl) && !scan.lessons?.length) {
+    throw new Error('課程首頁尚未找到章節，請確認已登入且可觀看這門課程。');
+  }
   const catalog = scan.lessons?.length ? scan.lessons : [{ url: scan.pageUrl, title: scan.title }];
   const entries = catalog.map((lesson, index) => ({ ...lesson, index: index + 1 }));
   if (chapters?.some(index => index < 1 || index > entries.length)) throw new Error('章節編號超出目錄範圍，請先執行 scan。');
@@ -65,7 +73,11 @@ export async function scanWhenReady(page, expectedUrl, { signal, timeoutMs = 600
           if (!ready) { await pause(signal); continue; }
         }
         const scan = await page.evaluate(scanPage);
-        if (samePage(scan.pageUrl, expectedUrl) && (playable ? scan.media?.length : scan.lessons?.length || scan.media?.length)) return scan;
+        // Course landing pages can contain unrelated preview media. Only their
+        // chapter catalog can select the actual lesson pages for downloading.
+        const ready = playable ? scan.media?.length
+          : scan.lessons?.length || (!isDuotifyLanding(scan.pageUrl) && scan.media?.length);
+        if (samePage(scan.pageUrl, expectedUrl) && ready) return scan;
       }
     } catch (error) {
       abortCheck(signal);
